@@ -5,8 +5,8 @@ vulnerabilities (command injection, code injection, and path traversal) by
 tracing whether attacker-controllable data can reach a dangerous operation.
 
 Unlike a simple linter that just flags "you called `os.system`", taintpy tracks
-**data flow**: it only reports a sink when *tainted* data actually reaches it.
-This keeps false positives low and makes findings worth acting on.
+**data flow**, it only reports a sink when *tainted* data actually reaches it.
+This keeps false positives low and makes findings worth paying attention to.
 
 > This is built as a security-research learning project. Use it only on code you own or
 > are authorized to analyze.
