@@ -5,4 +5,4 @@ input enters (sources), and reports when that data can reach a dangerous
 operation (sinks) without being cleaned along the way.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
