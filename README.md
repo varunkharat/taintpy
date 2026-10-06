@@ -162,6 +162,22 @@ matches `flask.request.args.get` and `self.request.args.get`. `args` and
 `keywords` limit which arguments of a sink count, which is how a
 parameterized SQL call avoids being flagged.
 
+## Web interface
+
+An optional web page lets you paste code, switch between the two engines,
+and see each finding's path highlighted on the code: the source in amber,
+every step in blue, the sink in red.
+
+```bash
+pip install -e ".[web]"     # adds FastAPI and uvicorn; the analyzer itself still needs nothing
+taintpy-web                 # serves http://127.0.0.1:8000
+```
+
+The server listens on this machine only unless you pass `--host`. Pasted
+code is parsed, never run. The page calls one endpoint, `POST /api/analyze`,
+which returns the same finding objects as the JSON report, so the
+highlighting reads line numbers from the path data directly.
+
 ## What it looks for
 
 | Category | Example sinks |
@@ -217,7 +233,7 @@ those paths, so it is not a vulnerability. Both lines carry a
 ## Validation
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,web]"    # web is only needed for tests/test_web.py, which skips otherwise
 pytest
 ```
 

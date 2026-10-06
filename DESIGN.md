@@ -198,4 +198,15 @@ user data, and are skipped.
 
 The analyzer uses only the standard library. A security tool that pulls in
 packages adds supply-chain risk to every project that installs it, and the
-standard `ast` module has everything a source-level analyzer needs.
+standard `ast` module has everything a source-level analyzer needs. The web
+interface is optional and installs its own dependencies through an extra.
+
+## 13. The web interface is a thin layer
+
+The page is one static HTML file with plain JavaScript, served by a small
+FastAPI app that has one analysis endpoint. That endpoint calls the same
+functions as the CLI and returns the same finding dictionaries as the JSON
+report. Keeping it thin means there is one analyzer and one output format to
+test and explain, and the page cannot disagree with the command line. There
+is no frontend framework or build step, and nothing is loaded from a CDN, so
+the page works offline and there is nothing to explain beyond the one file.
