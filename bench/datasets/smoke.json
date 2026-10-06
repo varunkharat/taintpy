@@ -1,0 +1,224 @@
+{
+  "name": "smoke: tests/fake_app (author-labeled, not an accuracy measure)",
+  "projects": [
+    {
+      "name": "fake_app",
+      "root": "../../tests/fake_app",
+      "cases": [
+        {
+          "id": "webapp.download",
+          "file": "webapp.py",
+          "function": "download",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.view",
+          "file": "webapp.py",
+          "function": "view",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.delete",
+          "file": "webapp.py",
+          "function": "delete",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.convert",
+          "file": "webapp.py",
+          "function": "convert",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.ping",
+          "file": "webapp.py",
+          "function": "ping",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.calc",
+          "file": "webapp.py",
+          "function": "calc",
+          "cwe": 95,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.restore",
+          "file": "webapp.py",
+          "function": "restore",
+          "cwe": 502,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.load_config",
+          "file": "webapp.py",
+          "function": "load_config",
+          "cwe": 502,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.tag",
+          "file": "webapp.py",
+          "function": "tag",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.run_shell",
+          "file": "webapp.py",
+          "function": "run_shell",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.thumb",
+          "file": "webapp.py",
+          "function": "thumb",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.rename",
+          "file": "webapp.py",
+          "function": "rename",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "webapp.version",
+          "file": "webapp.py",
+          "function": "version",
+          "vulnerable": false
+        },
+        {
+          "id": "webapp.ping_safe",
+          "file": "webapp.py",
+          "function": "ping_safe",
+          "vulnerable": false
+        },
+        {
+          "id": "webapp.fingerprint",
+          "file": "webapp.py",
+          "function": "fingerprint",
+          "vulnerable": false
+        },
+        {
+          "id": "webapp.reset",
+          "file": "webapp.py",
+          "function": "reset",
+          "vulnerable": false
+        },
+        {
+          "id": "webapp.readme",
+          "file": "webapp.py",
+          "function": "readme",
+          "vulnerable": false
+        },
+        {
+          "id": "webapp.log",
+          "file": "webapp.py",
+          "function": "log",
+          "vulnerable": false
+        },
+        {
+          "id": "admin_cli.rotate_logs",
+          "file": "admin_cli.py",
+          "function": "rotate_logs",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.deploy",
+          "file": "admin_cli.py",
+          "function": "deploy",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.purge_cache",
+          "file": "admin_cli.py",
+          "function": "purge_cache",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.load_plugin",
+          "file": "admin_cli.py",
+          "function": "load_plugin",
+          "cwe": 95,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.tail_log",
+          "file": "admin_cli.py",
+          "function": "tail_log",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.sudo_check",
+          "file": "admin_cli.py",
+          "function": "sudo_check",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.cleanup_user",
+          "file": "admin_cli.py",
+          "function": "cleanup_user",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.backup_file",
+          "file": "admin_cli.py",
+          "function": "backup_file",
+          "cwe": 22,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.announce",
+          "file": "admin_cli.py",
+          "function": "announce",
+          "cwe": 78,
+          "vulnerable": true
+        },
+        {
+          "id": "admin_cli.list_dir_safe",
+          "file": "admin_cli.py",
+          "function": "list_dir_safe",
+          "vulnerable": false
+        },
+        {
+          "id": "admin_cli.deploy_safe",
+          "file": "admin_cli.py",
+          "function": "deploy_safe",
+          "vulnerable": false
+        },
+        {
+          "id": "admin_cli.restart_service",
+          "file": "admin_cli.py",
+          "function": "restart_service",
+          "vulnerable": false
+        },
+        {
+          "id": "admin_cli.count_lines",
+          "file": "admin_cli.py",
+          "function": "count_lines",
+          "vulnerable": false
+        },
+        {
+          "id": "admin_cli.show_help",
+          "file": "admin_cli.py",
+          "function": "show_help",
+          "vulnerable": false
+        }
+      ]
+    }
+  ]
+}
