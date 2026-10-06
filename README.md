@@ -1,160 +1,294 @@
 # taintpy
 
-A small **taint-tracking static analyzer** for Python that finds injection
-vulnerabilities — command injection, code injection, and path traversal — by
-tracing whether attacker-controllable data can reach a dangerous operation.
+A taint-tracking static analyzer for Python. It looks for injection bugs:
+command injection, SQL injection, code injection, unsafe deserialization,
+path traversal, server-side request forgery, template injection and a few
+others.
 
-Unlike a simple linter that just flags "you called `os.system`", taintpy tracks
-**data flow**: it only reports a sink when *tainted* data actually reaches it.
-That's what keeps false positives low and makes findings worth acting on.
+## What taint tracking is
 
-> Built as a security-research learning project. Use it only on code you own or
-> are authorized to analyze.
+Most injection bugs have the same shape. Data the attacker controls enters
+the program somewhere (a **source**: `input()`, `sys.argv`, a web request
+parameter, a network response). It moves through variables, string
+building and function calls. Eventually it reaches an operation that does
+something dangerous with it (a **sink**: `os.system`, `cursor.execute`,
+`open`, `pickle.loads`, `eval`). Along the way it may pass through a
+**sanitizer** that makes it safe, such as `shlex.quote` or `int()`.
+
+A taint tracker marks data from sources as *tainted*, follows that mark
+through the program, and reports a sink only when tainted data actually
+reaches it. That is different from a pattern scanner such as Bandit, which
+flags `os.system(cmd)` wherever it appears, whether or not `cmd` can contain
+attacker data. Following the data is what lets a taint tracker stay quiet on
+`os.system("ls")` and still catch `os.system(cmd)` when `cmd` came from a
+request three function calls earlier.
+
+taintpy does this statically: it reads the source code and never runs it.
 
 ## Install
 
-No runtime dependencies. Python 3.9+.
+Python 3.9 or newer. The analyzer itself has no dependencies.
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/varunkharat/taintpy.git
 cd taintpy
-pip install -e .          # gives you the `taintpy` command
-# or just run it in place:
-python -m taintpy --help
+pip install -e .            # installs the `taintpy` command
+taintpy --help
 ```
+
+Without installing, `python -m taintpy --help` works from the repo root.
+
+## Quick start
+
+`examples/02_cross_function.py` reads a name in one function, builds a
+command in a second, and runs it in a third:
+
+```python
+def read_name():
+    return input("name: ")
+
+def build(name):
+    return "id " + name.strip()
+
+def run(cmd):
+    os.system(cmd)
+
+def main():
+    run(build(read_name()))
+```
+
+```
+$ taintpy examples/02_cross_function.py
+[HIGH] command-injection at examples/02_cross_function.py:19  (confidence: high)
+    sink: os.system(...)  <-- tainted input: cmd
+    note: reached through run() called at examples/02_cross_function.py:23
+    path:
+          11  source    input()
+          11  return    returned
+          23  return    returned by read_name()
+          23  call      passed to build() as name
+          14  param     parameter name of build()
+          15  return    returned
+          23  return    returned by build()
+          23  call      passed to run() as cmd
+          18  param     parameter cmd of run()
+          19  sink      os.system()
+
+--- 1 finding(s) in 1 file(s), engine=interproc ---
+```
+
+The finding is reported at the sink, line 19. The path starts at the real
+source, line 11, and lists every step in between. The `examples/` folder has
+four more short programs, each showing one thing the analyzer follows.
 
 ## Usage
 
 ```bash
-# scan a file (intraprocedural: within-function flows only)
-taintpy path/to/file.py
-
-# scan a whole project
-taintpy path/to/project/
-
-# follow taint ACROSS functions, methods and files (finds real-world bugs)
-taintpy --interproc path/to/project/
-
-# machine-readable output, only HIGH findings, extra rules for your framework
-taintpy --interproc --format json --min-severity HIGH --rules my_rules.json src/
+taintpy path/to/file.py                      # one file
+taintpy path/to/project/                     # every .py file under a directory
+taintpy --format json -o report.json src/    # machine-readable report
+taintpy --format sarif -o report.sarif src/  # for GitHub code scanning and other SARIF viewers
 ```
 
-Example output:
+| Option | Meaning |
+| --- | --- |
+| `--engine interproc` | Follow taint across functions, methods, classes and modules. The default. |
+| `--engine intra` | Stay inside each function. Faster, finds less. `--interproc` is kept as an alias for the default. |
+| `--format text\|json\|sarif` | Output format. |
+| `-o FILE` | Write the report to a file. |
+| `--rules FILE` | Load extra sources, sinks, propagators and sanitizers from JSON. Repeatable. |
+| `--unknown-calls sanitize\|propagate` | What a call taintpy has no rule or summary for does to taint. See below. |
+| `--min-severity HIGH\|MEDIUM\|LOW` | Hide findings below a severity. |
+| `--min-confidence high\|medium\|low` | Hide findings below a confidence level. |
 
-```
-[HIGH] command-injection at app.py:42
-    sink: os.system(...)  <-- tainted input: 'ping ' + host
-```
+The exit code is 1 when there are findings and 0 when there are none, so the
+command works as a CI gate. Put `# taintpy: ignore` on a sink line to
+suppress a finding you have reviewed.
 
-Exit code is non-zero when findings exist, so it drops into CI easily.
-Suppress a known-safe line with a trailing `# taintpy: ignore` comment.
+### What a finding contains
+
+Each finding has the sink location, the category and severity, the tainted
+expression at the sink, the source location, the full path, and a
+confidence level. The JSON report also records the taintpy version, the
+engine and options used, the rule files loaded, how many files were scanned,
+and every file that was skipped and why. Files that fail to parse, which in
+older projects usually means Python 2 code, are listed rather than silently
+dropped.
+
+**Confidence** says how sure taintpy is about the calls on the path:
+
+- **high**: every call on the path was resolved through a definition,
+  import, `self`, `super()`, or a local variable assigned from a
+  constructor.
+- **medium**: some call `obj.method()` could not be resolved that way, and
+  exactly one method in the program has that name, so taintpy assumed it was
+  that one. Also used for calls passed through by `--unknown-calls propagate`.
+- **low**: as above, but several methods share the name. taintpy follows all
+  of them and says so in the path.
+
+### Unknown calls
+
+When taint goes into a call that taintpy has no rule and no summary for,
+say a function from a third-party library, it has to guess what comes out.
+The default, `sanitize`, assumes the result is clean. That keeps false
+positives down and loses real flows through libraries it does not know.
+`propagate` assumes the result is tainted if any argument or the receiver
+was. It finds more and reports more that is not real. Those findings are
+marked medium confidence so they can be told apart.
 
 ### Custom rules
 
-`--rules FILE` merges a JSON file into the built-in rule set. Every key is
+`--rules FILE` merges a JSON file into the built-in rules. Every key is
 optional:
 
 ```json
 {
   "sources":        ["bottle.request.query.get"],
   "source_objects": ["bottle.request.params"],
-  "sinks":          {"db.raw_query": ["sql-injection", "HIGH"]},
-  "propagators":    ["my_template.render"],
-  "sanitizers":     ["my_escape"]
+  "sinks": {
+    "db.raw_query": ["sql-injection", "HIGH"],
+    "db.query":     {"category": "sql-injection", "severity": "HIGH",
+                     "args": [0], "keywords": ["sql"]}
+  },
+  "receiver_sinks":       {"mypath.dump": ["path-traversal", "LOW"]},
+  "propagators":          ["my_template.render"],
+  "receiver_propagators": ["fetch_one"],
+  "sanitizers":           ["my_escape"]
 }
 ```
 
-Names match by dotted-name *suffix*, so `request.args.get` also matches
-`flask.request.args.get`.
+Names match by dotted suffix on a dot boundary, so `request.args.get` also
+matches `flask.request.args.get` and `self.request.args.get`. `args` and
+`keywords` limit which arguments of a sink count, which is how a
+parameterized SQL call avoids being flagged.
+
+## What it looks for
+
+| Category | Example sinks |
+| --- | --- |
+| command-injection | `os.system`, `os.popen`, `os.exec*`, `subprocess.*` with `shell=True` or a tainted program name, `["sh", "-c", ...]` |
+| code-injection | `eval`, `exec`, `compile`, `importlib.import_module` |
+| deserialization | `pickle.loads`, `yaml.load` without a safe loader, `marshal`, `dill`, `jsonpickle`, `torch.load`, `numpy.load(allow_pickle=True)` |
+| sql-injection | `cursor.execute` and friends (first argument only), Django `raw`/`extra`/`RawSQL`, `pandas.read_sql` |
+| path-traversal | `open`, `os.remove`, `shutil.*`, `send_file`, `FileResponse`, `Path(...).read_text()` and similar |
+| ssrf | `requests.*`, `httpx.*`, `urlopen` (URL argument only) |
+| template-injection | `render_template_string`, `jinja2.Template`, `Environment.from_string` |
+| xss | `Markup`, `mark_safe`, `HTMLResponse` |
+| xxe | `lxml.etree.fromstring`, `parse`, `XML` |
+| ldap-injection | `search_s` filter argument |
+| open-redirect | `redirect`, `HttpResponseRedirect`, `RedirectResponse` |
+
+Sources include `input()`, `sys.argv`, `os.environ`, `getpass`, stdin,
+argparse results, socket reads, HTTP client responses, Flask, Django,
+Starlette, FastAPI and aiohttp request accessors, and the parameters of
+functions decorated as web routes (`@app.route("/...")`, `@router.get("/...")`).
+The full lists are in `taintpy/rules.py`.
 
 ## How it works
 
-Four stages, one per concept:
+1. **Parse.** Python's `ast` module turns each file into a syntax tree.
+2. **Model the program.** `program.py` records every module, class and
+   function and resolves what each name refers to, following imports.
+3. **Track taint in one function.** `analyzer.py` walks the statements in
+   order. It keeps a map from each tainted variable to its trace, the steps
+   from the source. Taint passes through assignment, string building,
+   containers, comprehensions and known library calls. An `if`, loop or `try`
+   runs each branch separately and keeps taint from any of them.
+4. **Summarize functions.** `interprocedural.py` describes each function by
+   what it does with tainted input: does it return a source, which
+   parameters reach its return value, which reach a sink, and which get
+   stored on `self` or in a global. A call site uses the callee's summary
+   instead of re-reading the callee. Summaries depend on each other, so the
+   program is re-analyzed until they stop changing.
+5. **Report.** A finding is a source and a sink connected by a path.
 
-1. **Parse** — `ast.parse` turns source into an Abstract Syntax Tree.
-2. **Sources & sinks** (`rules.py`) — a data-driven list of where untrusted
-   input enters (`input()`, `request.args.get(...)`, `sys.argv`,
-   `parse_args()`, ...) and which operations are dangerous (`os.system`,
-   `eval`, `open`, `subprocess.*`, `pickle.loads`, ...).
-3. **Taint tracking** (`analyzer.py`) — walking statements in order, we keep a
-   set of tainted names. Assignment from tainted data taints the target;
-   taint propagates through string building (`+`, f-strings, `.format`,
-   `.join`, `.strip().lower()`, `os.path.join`), tuple unpacking, container
-   stores, comprehensions and ternaries; assignment from clean data clears it.
-   At an `if`/`try`/loop the branches are analyzed separately and the results
-   **unioned**, so taint from any path survives.
-4. **Report** — when a sink receives a tainted argument (positional or
-   keyword), we emit a finding with file, line, severity, and the tainted
-   expression.
+[DESIGN.md](DESIGN.md) explains each design decision, what the alternatives
+were, and what they would have cost.
 
-It encodes real security semantics, not just patterns — e.g. `subprocess.run`
-with an argument **list** and no `shell=True` is the safe form and is *not*
-flagged, `shell=True` with tainted input is escalated to HIGH, and
-`yaml.load(..., Loader=SafeLoader)` is left alone.
-
-Unknown function calls are assumed to **sanitize** (their result is clean).
-That keeps false positives down at the cost of missing taint that flows through
-helpers the tool doesn't know — which is exactly what `--interproc` fixes for
-helpers defined in the code being scanned.
-
-### Interprocedural mode (`--interproc`)
-
-Real bugs usually span functions: input arrives in one function and reaches a
-sink in another. To follow that, `interprocedural.py` computes a **summary** of
-each function — *does it return tainted data?* *which parameters flow to the
-return?* and *which parameters reach a sink inside it?* — by seeding one
-parameter as tainted and watching the engine. It repeats until the summaries
-stabilize (a fixpoint), then does a final pass where every call site knows what
-the callee does. That's how it catches a `source -> helper -> helper -> sink`
-chain across three functions.
-
-Summaries are keyed by qualified name (`helper`, `Cls.method`) and shared
-across **every file in the scan**, so `helpers.run(x)`, `self.method(x)` and
-`obj.method(x)` all resolve, including across modules. Keyword arguments are
-mapped to parameters by name.
-
-**Tool hit != vulnerability.** A finding is a *data flow*, not proof of a bug.
-Whether it's exploitable depends on whether that input is really
-attacker-controlled — human triage the tool can't do for you.
+**A finding is a data flow, not a confirmed vulnerability.** Whether it is
+exploitable depends on things taintpy cannot see: whether the source is
+really attacker-controlled in deployment, and whether a check it does not
+understand already makes the input safe. For example, running taintpy on its
+own code reports that the `--rules` and `-o` paths from the command line
+reach `open()`. That flow is real, but the person running the tool chooses
+those paths, so it is not a vulnerability. Both lines carry a
+`# taintpy: ignore` comment.
 
 ## Validation
 
 ```bash
-python tests/test_analyzer.py     # no dependencies
-pytest                            # if installed
+pip install -e ".[dev]"
+pytest
 ```
 
-The suite covers:
+The test suite has:
 
-- `tests/vulnerable_example.py` — 7 planted bugs, all must be caught.
-- `tests/safe_example.py` — safe patterns, none may be flagged.
-- `tests/interproc_example.py` — 2 cross-function bugs only `--interproc` sees.
-- `tests/fake_app/` — a fake Flask file-share app and admin CLI with 21 planted
-  bugs (`# BUG` / `# INTERPROC`) and 11 decoys (`# SAFE`). The test reads
-  those markers and checks for exact agreement: no misses, no extras.
-- `tests/multifile/` — taint entering in one module and hitting a sink in
-  another, through a method call.
-- Unit tests for each propagation rule, branch merging, suppression comments,
-  JSON output and rule files.
+- unit tests for each propagation rule, sink rule, source and output format;
+- interprocedural tests for call resolution, imports across files and
+  packages, instance attributes, globals, `*args`/`**kwargs` and recursion;
+- marker-driven fixtures (`tests/fake_app/`, `tests/multifile/`) where every
+  `# BUG` and `# INTERPROC` line must be reported and nothing else may be;
+- `tests/test_limitations.py`, one test per known limitation below, each
+  marked as an expected failure. If a change fixes a limitation, that test
+  starts passing and the suite fails until the test and this README are
+  updated together.
+
+The fixtures were written by the author of the analyzer, so passing them
+shows the tool does what it was built to do. It does not measure accuracy on
+code nobody wrote for it. No accuracy figures are claimed here until a
+measurement on an external benchmark can be rerun from this repository.
 
 ## Known limitations
 
-- **Calls are resolved by name, not by type.** `obj.method(x)` matches every
-  function named `method` in the scan; same-named definitions share one
-  summary (their effects are unioned). This favors recall over precision.
-- **`*args` / `**kwargs` are not modeled** in summaries.
-- **Flow-insensitive within a path.** Taint is a set of names; there is no
-  path condition, so `if is_safe(x): sink(x)` is still reported.
-- **Container stores are coarse.** `d[k] = tainted` taints all of `d`;
-  `obj.attr = tainted` is tracked per attribute.
-- **Sanitizers are an allowlist.** Unknown calls are assumed to clean data.
-  A custom validator that merely checks and returns its input will hide the
-  flow; add it to `propagators` in a rules file to follow it.
-- **No dynamic dispatch, decorators, globals, or closures.** Taint does not
-  flow through module globals or captured variables.
+Every item below is checked by a test in `tests/test_limitations.py` or
+follows from the design.
+
+- **No path sensitivity.** A check such as `if x.isalnum():` before the sink
+  is not understood, so the flow is still reported.
+- **Sanitizers are not context-aware.** `html.escape` cleans data for every
+  sink, including `os.system`, where it does nothing useful.
+- **Unknown calls clean taint by default.** A library function not in the
+  rules ends the trail. `--unknown-calls propagate` trades this for more
+  false positives.
+- **Limited type inference.** `obj.method()` is resolved only through
+  `self`, `super()`, imports, or a local assigned from a constructor in the
+  same function. Otherwise taintpy matches by method name and lowers the
+  confidence. Methods with the names of common builtin methods (`get`,
+  `split`, `read` and so on) are never matched by name.
+- **No dispatch to subclass overrides.** `self.run()` inside a base class
+  resolves to the base class's `run`, never a subclass's.
+- **Instance attributes and module globals are flow-insensitive.** If any
+  method writes tainted data to `self.cmd`, every read of `self.cmd` on that
+  class is tainted, even a read before the write or after it is overwritten.
+  An attribute written in a subclass is not seen by reads in the base class.
+  Globals are tracked only by the interprocedural engine.
+- **Closures and lambdas are not followed.** A nested function does not see
+  its enclosing function's variables, and lambda bodies are not analyzed.
+- **Decorators are ignored.** A call to a decorated function is analyzed as
+  a call to the undecorated body.
+- **Containers are coarse.** Storing tainted data under one key of a dict
+  taints the whole dict. An argument list held in a variable and passed to
+  `subprocess.run` is treated as tainted if any element is.
+- **One path per variable.** When a variable could be tainted two ways,
+  taintpy keeps the shorter trace, so a finding shows one path, not all of
+  them.
+- **One summary per function.** Summaries do not depend on the caller, so a
+  function behaves the same at every call site.
+- **Only scanned code is analyzed.** Calls into installed libraries are
+  handled by rules only. Frameworks other than Flask, Django, Starlette,
+  FastAPI and aiohttp need rules added for their sources.
+- **Name-suffix rule matching.** A user variable named `request` will match
+  the web request rules, and any method called `execute` counts as an SQL
+  sink.
+- **Python 3 only.** Files that do not parse as the running Python version's
+  syntax are skipped and listed in the report.
 
 ## Responsible use
 
-This tool exists to help find and fix bugs. Only analyze code you own or have
-explicit permission to test, and follow coordinated disclosure if you find a
-real vulnerability in someone else's project.
+Only analyze code you own or have permission to test. If you find a real
+vulnerability in someone else's project, report it privately to the
+maintainers and give them time to fix it before publishing anything.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

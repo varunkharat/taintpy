@@ -2,7 +2,10 @@
 
 Every line marked ``# BUG`` is a planted vulnerability taintpy should catch.
 Every line marked ``# SAFE`` is a decoy taintpy should leave alone.
-Lines marked ``# INTERPROC`` are only findable with ``--interproc``.
+Lines marked ``# INTERPROC`` are only findable with ``--interproc``. A
+cross-function finding is reported at the sink, inside the callee, so the
+INTERPROC marker sits on the sink line and the call site that starts the path
+says where it goes.
 
 This code is never meant to be run.
 """
@@ -35,7 +38,7 @@ def build_path(name):
 
 def run_shell(cmd):
     # The sink lives here, far from where the input arrives.
-    return os.popen(cmd).read()
+    return os.popen(cmd).read()                             # INTERPROC command-injection (from /whoami)
 
 
 def normalize(name):
@@ -121,7 +124,7 @@ def tag():
 @app.route("/whoami")
 def whoami():
     user = current_user()
-    run_shell("id " + user)                                 # INTERPROC command-injection
+    run_shell("id " + user)                                 # path ends at run_shell, line 38
 
 
 @app.route("/thumb")
