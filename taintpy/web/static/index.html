@@ -83,6 +83,12 @@ textarea { width: 100%; min-height: 260px; resize: vertical; padding: 10px;
 .legend .p::before { background: var(--step-bar); }
 .legend .k::before { background: var(--sink-bar); }
 footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+.intro { margin: 10px 0 0; max-width: 80ch; color: var(--muted); }
+.intro summary { cursor: pointer; color: var(--accent); }
+.intro p { margin: 6px 0; }
+.explain { margin: 6px 12px 0 32px; padding: 8px 10px; border-left: 3px solid var(--sink-bar);
+           background: var(--bg); font-size: 12.5px; }
+.explain p { margin: 2px 0; }
 </style>
 </head>
 <body>
@@ -91,6 +97,15 @@ footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
     <h1>taintpy</h1>
     <p>Paste Python code. taintpy reports where untrusted input can reach a dangerous call, and shows the path it takes.</p>
   </header>
+  <details class="intro">
+    <summary>What does this do?</summary>
+    <p>Many security bugs have the same shape: text an attacker controls, like a form field or a command-line argument,
+       travels through a program until it reaches something dangerous, like a shell command or a database query.</p>
+    <p>taintpy reads Python code without running it, marks untrusted input as <em>tainted</em>, and follows it through
+       variables and function calls. It reports a problem only when tainted data can actually reach a dangerous call,
+       and it shows every step of the path so you can check it yourself.</p>
+    <p>Try a sample from the menu, then click a finding to see its path highlighted on the code.</p>
+  </details>
 
   <div class="controls">
     <div class="seg" role="group" aria-label="Engine">
@@ -133,6 +148,11 @@ footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
 
 <script>
 "use strict";
+
+// build_site.py rewrites these two lines for the in-browser build in docs/.
+const BACKEND = "server";
+const PY_FILES = [];
+const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/";
 
 const SAMPLES = {
   "Direct flow": `import os
@@ -249,20 +269,19 @@ $("code").addEventListener("keydown", (e) => {
 async function analyze() {
   const code = $("code").value;
   state.code = code;
-  setStatus("Analyzing…");
+  setStatus(BACKEND === "pyodide" && !pyodideReady
+    ? "Loading Python in your browser. The first run takes a few seconds…"
+    : "Analyzing…");
+  const payload = { code, engine: state.engine, unknown_calls: $("unknown").value };
   let res, body;
   try {
-    res = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, engine: state.engine, unknown_calls: $("unknown").value }),
-    });
-    body = await res.json();
+    res = await callBackend(payload);
+    body = res.body;
   } catch (err) {
-    setStatus("Could not reach the server: " + err, true);
+    setStatus("The analyzer could not run: " + err, true);
     return;
   }
-  if (!res.ok) {
+  if (res.status !== 200) {
     const d = body.detail || {};
     const msg = d.error === "syntax error"
       ? `Syntax error on line ${d.line}: ${d.message}`
@@ -277,6 +296,42 @@ async function analyze() {
   state.selected = 0;
   renderFindings();
   renderCode(currentPath());
+}
+
+let pyodideReady = null;
+
+async function callBackend(payload) {
+  if (BACKEND === "server") {
+    const r = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return { status: r.status, body: await r.json() };
+  }
+  if (!pyodideReady) pyodideReady = startPyodide();
+  const py = await pyodideReady;
+  const service = py.pyimport("taintpy.service");
+  return JSON.parse(service.analyze_json(JSON.stringify(payload)));
+}
+
+async function startPyodide() {
+  // The analyzer is plain standard-library Python, so the same files the CLI
+  // uses run unchanged in Pyodide. Copy them into its virtual file system.
+  await new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = PYODIDE_URL + "pyodide.js";
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("could not load Pyodide from " + PYODIDE_URL));
+    document.head.append(s);
+  });
+  const py = await loadPyodide({ indexURL: PYODIDE_URL });
+  py.FS.mkdirTree("/home/pyodide/taintpy");
+  for (const path of PY_FILES) {
+    const text = await (await fetch("py/" + path)).text();
+    py.FS.writeFile("/home/pyodide/" + path, text);
+  }
+  return py;
 }
 
 function setStatus(text, isError) {
@@ -303,6 +358,11 @@ function renderFindings() {
                el("span", "meta", `line ${f.line}, from line ${f.source_line}, confidence ${f.confidence}`));
     btn.append(top, el("div", "meta", `${f.sink}(${f.tainted_input})`));
     if (i === state.selected) {
+      if (f.explanation) {
+        const ex = el("div", "explain");
+        ex.append(el("p", "", f.explanation), el("p", "", "Fix: " + f.fix));
+        btn.append(ex);
+      }
       const ol = el("ol", "steps");
       for (const s of f.path) {
         const li = document.createElement("li");
@@ -362,8 +422,12 @@ function el(tag, cls, text) {
   return e;
 }
 
-fetch("/api/version").then((r) => r.json()).then((v) => { $("version").textContent = "taintpy " + v.version; })
-  .catch(() => {});
+if (BACKEND === "server") {
+  fetch("/api/version").then((r) => r.json()).then((v) => { $("version").textContent = "taintpy " + v.version; })
+    .catch(() => {});
+} else {
+  $("version").textContent = "Runs entirely in your browser. Your code is not sent anywhere.";
+}
 $("code").value = SAMPLES["Across three functions"];
 </script>
 </body>

@@ -101,6 +101,7 @@ class Finding:
         return self.location_key() + (self.source_file, self.source_line)
 
     def to_dict(self):
+        explanation, fix = rules.CATEGORY_HELP.get(self.category, ("", ""))
         return {
             "file": self.filename,
             "line": self.lineno,
@@ -115,6 +116,8 @@ class Finding:
                       "detail": s.detail, "confidence": s.confidence}
                      for s in self.path],
             "note": self.note,
+            "explanation": explanation,
+            "fix": fix,
         }
 
     def __str__(self):

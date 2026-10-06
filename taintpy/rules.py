@@ -303,6 +303,54 @@ SHELL_PROGRAMS = {"sh", "bash", "zsh", "dash", "ksh", "fish", "cmd", "cmd.exe",
                   "powershell", "powershell.exe", "pwsh"}
 SHELL_COMMAND_FLAGS = {"-c", "/c", "/C", "-Command", "-command"}
 
+# Plain-language explanation and fix for each category, shown with findings
+# so a reader who is not a security specialist knows why it matters.
+CATEGORY_HELP = {
+    "command-injection": (
+        "Untrusted text becomes part of a shell command, so an attacker can run "
+        "their own commands on the machine.",
+        "Pass arguments as a list without shell=True, or quote them with shlex.quote."),
+    "code-injection": (
+        "Untrusted text is run as Python code, so an attacker can make the program "
+        "do anything it is able to do.",
+        "Never eval or exec user input. Parse it instead, e.g. ast.literal_eval or json.loads."),
+    "deserialization": (
+        "Untrusted bytes are loaded with a format that can run code while loading, "
+        "such as pickle or unsafe YAML.",
+        "Use a data-only format such as JSON, or yaml.safe_load."),
+    "sql-injection": (
+        "Untrusted text is built into an SQL query, so an attacker can read or change "
+        "data they should not reach.",
+        "Use a parameterized query: put ? or %s in the SQL and pass the values separately."),
+    "path-traversal": (
+        "Untrusted text is used as a file path, so an attacker can use ../ to reach "
+        "files outside the intended folder.",
+        "Reduce the name with os.path.basename or check the resolved path stays inside "
+        "the allowed directory."),
+    "ssrf": (
+        "Untrusted text decides which URL the server requests, so an attacker can make "
+        "it reach internal services.",
+        "Only allow requests to a fixed list of hosts."),
+    "template-injection": (
+        "Untrusted text is compiled as a template, and template code can run on the server.",
+        "Pass user data as template variables, never as the template itself."),
+    "xss": (
+        "Untrusted text is marked as safe HTML, so an attacker can run script in other "
+        "users' browsers.",
+        "Let the template engine escape the value instead of marking it safe."),
+    "xxe": (
+        "An XML parser that resolves external entities reads untrusted XML, which can "
+        "leak local files.",
+        "Use defusedxml, or turn off entity resolution in the parser."),
+    "ldap-injection": (
+        "Untrusted text is built into an LDAP filter, which can change what the search returns.",
+        "Escape values with ldap.filter.escape_filter_chars."),
+    "open-redirect": (
+        "Untrusted text decides where the user is redirected, which helps phishing.",
+        "Only redirect to relative paths or a fixed list of hosts."),
+}
+
+
 # --- PROPAGATORS ------------------------------------------------------------
 
 # Calls that carry taint from their receiver OR any argument to their result.

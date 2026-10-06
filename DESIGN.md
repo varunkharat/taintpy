@@ -210,3 +210,19 @@ report. Keeping it thin means there is one analyzer and one output format to
 test and explain, and the page cannot disagree with the command line. There
 is no frontend framework or build step, and nothing is loaded from a CDN, so
 the page works offline and there is nothing to explain beyond the one file.
+
+## 14. The online version runs in the browser, not on a server
+
+The online demo could have been a hosted copy of the FastAPI server. That
+needs a hosting account, costs money or sleeps when idle, and sends every
+pasted file to a machine someone has to keep running and secure. Because
+the analyzer uses only the standard library, it runs unchanged under
+Pyodide, a build of Python for WebAssembly. GitHub Pages serves the page and
+the `.py` files as static files, the browser runs them, and nothing is sent
+anywhere. The cost is a few seconds of loading on first use, while the
+browser downloads Python itself.
+
+The page is the same HTML file the server uses. `tools/build_site.py`
+changes one line to switch it to Pyodide and copies the analyzer's source
+files next to it. There is no second implementation to keep in step, and
+`tests/test_site.py` fails if the copy is stale.
