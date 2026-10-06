@@ -28,12 +28,12 @@ def read_target():
 
 def backup_file(name):
     # Parameter reaches a sink inside this function.
-    shutil.copy(name, BACKUP_DIR)
+    shutil.copy(name, BACKUP_DIR)                             # INTERPROC path-traversal (from argv)
 
 
 def announce(text):
     # Parameter reaches a sink inside this function.
-    os.system("wall '" + text + "'")
+    os.system("wall '" + text + "'")                          # INTERPROC command-injection (from input)
 
 
 def choose_env(raw):
@@ -89,12 +89,12 @@ def cleanup_user():
 # --------------------------------------------------------------------------
 
 def backup_from_argv():
-    backup_file(read_target())                                # INTERPROC path-traversal
+    backup_file(read_target())                                # path ends in backup_file, line 31
 
 
 def broadcast():
     message = input("message: ")
-    announce(message)                                         # INTERPROC command-injection
+    announce(message)                                         # path ends in announce, line 36
 
 
 # --------------------------------------------------------------------------
