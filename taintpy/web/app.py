@@ -18,7 +18,7 @@ try:
     from pydantic import BaseModel, Field
 except ImportError as e:
     raise SystemExit("The web interface needs its extra dependencies:\n"
-                     '    pip install -e ".[web]"') from e
+                     '    pip install "taintpy[web]"  (or pip install -e ".[web]" in a clone)') from e
 
 from .. import __version__
 from ..analyzer import analyze_source
