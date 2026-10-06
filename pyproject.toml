@@ -19,13 +19,21 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "httpx>=0.24"]
+web = ["fastapi>=0.100", "uvicorn>=0.20"]
+
+[project.urls]
+Homepage = "https://github.com/varunkharat/taintpy"
 
 [project.scripts]
 taintpy = "taintpy.cli:main"
+taintpy-web = "taintpy.web.app:main"
 
 [tool.setuptools]
-packages = ["taintpy"]
+packages = ["taintpy", "taintpy.web"]
+
+[tool.setuptools.package-data]
+"taintpy.web" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

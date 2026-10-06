@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>taintpy</title>
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66;
+  --border: #dedcd5; --accent: #2f5fa7; --accent-text: #ffffff;
+  --source-bg: #fff1c7; --source-bar: #c48a00;
+  --step-bg: #e6eefb; --step-bar: #2f5fa7;
+  --sink-bg: #fde3e1; --sink-bar: #c0392b;
+  --high: #c0392b; --medium: #b86e00; --low: #5b6b7a;
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615; --panel: #1f1f1d; --text: #e9e8e3; --muted: #9a9890;
+    --border: #393833; --accent: #7aa2e0; --accent-text: #10151d;
+    --source-bg: #3d3214; --source-bar: #e0a92a;
+    --step-bg: #1c2a40; --step-bar: #7aa2e0;
+    --sink-bg: #46201d; --sink-bar: #ef6b5e;
+    --high: #ef6b5e; --medium: #e0a92a; --low: #9aa9b8;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 16px; }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; }
+header p { margin: 0; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+            margin: 14px 0 10px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; background: var(--panel); color: var(--text);
+              padding: 6px 12px; cursor: pointer; font: inherit; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+label { color: var(--muted); }
+select, .primary { font: inherit; padding: 6px 10px; border-radius: 6px;
+                   border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+           cursor: pointer; font-weight: 600; }
+.hint { color: var(--muted); font-size: 12px; }
+textarea { width: 100%; min-height: 260px; resize: vertical; padding: 10px;
+           font: 13px/1.5 var(--mono); tab-size: 4; border: 1px solid var(--border);
+           border-radius: 6px; background: var(--panel); color: var(--text); }
+.results { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 14px; margin-top: 14px; }
+@media (max-width: 800px) { .results { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; min-width: 0; }
+.panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+            color: var(--muted); margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+#status { padding: 10px 12px; color: var(--muted); }
+#status.error { color: var(--high); }
+.finding { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--border);
+           background: transparent; color: var(--text); padding: 10px 12px; cursor: pointer; font: inherit; }
+.finding:hover { background: var(--bg); }
+.finding[aria-selected="true"] { background: var(--step-bg); }
+.finding .top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.sev { font-weight: 700; font-size: 12px; }
+.sev.HIGH { color: var(--high); } .sev.MEDIUM { color: var(--medium); } .sev.LOW { color: var(--low); }
+.cat { font-weight: 600; }
+.meta { color: var(--muted); font-size: 12px; }
+.steps { margin: 0; padding: 8px 12px 12px 32px; font-size: 12.5px; }
+.steps li { margin: 2px 0; }
+.steps code { font-family: var(--mono); }
+.codeview { overflow-x: auto; font: 13px/1.5 var(--mono); padding: 6px 0; }
+.line { display: grid; grid-template-columns: 3.5em 1fr; white-space: pre; border-left: 3px solid transparent; }
+.ln { color: var(--muted); text-align: right; padding-right: 12px; user-select: none; }
+.line.step { background: var(--step-bg); border-left-color: var(--step-bar); }
+.line.source { background: var(--source-bg); border-left-color: var(--source-bar); }
+.line.sink { background: var(--sink-bg); border-left-color: var(--sink-bar); }
+.line.othersink .ln { color: var(--sink-bar); font-weight: 700; }
+.note { font-family: system-ui, sans-serif; font-size: 12px; color: var(--muted); padding-left: 2ch; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--border);
+          font-size: 12px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 5px;
+                       border-radius: 2px; vertical-align: -1px; }
+.legend .s::before { background: var(--source-bar); }
+.legend .p::before { background: var(--step-bar); }
+.legend .k::before { background: var(--sink-bar); }
+footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>taintpy</h1>
+    <p>Paste Python code. taintpy reports where untrusted input can reach a dangerous call, and shows the path it takes.</p>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Engine">
+      <button type="button" data-engine="interproc" aria-pressed="true" title="Follow taint across functions, methods and classes">Interprocedural</button>
+      <button type="button" data-engine="intra" aria-pressed="false" title="Stay inside each function">Intraprocedural</button>
+    </div>
+    <label>Unknown calls
+      <select id="unknown">
+        <option value="sanitize">clean taint (default)</option>
+        <option value="propagate">pass taint through</option>
+      </select>
+    </label>
+    <label>Sample
+      <select id="sample"><option value="">choose…</option></select>
+    </label>
+    <button type="button" class="primary" id="run">Analyze</button>
+    <span class="hint">Ctrl+Enter also runs it.</span>
+  </div>
+
+  <textarea id="code" spellcheck="false" aria-label="Python source code"></textarea>
+
+  <div class="results">
+    <section class="panel" aria-label="Findings">
+      <h2>Findings</h2>
+      <div id="status">Nothing analyzed yet.</div>
+      <div id="findings"></div>
+    </section>
+    <section class="panel" aria-label="Annotated code">
+      <h2>Path</h2>
+      <div class="codeview" id="view"></div>
+      <div class="legend"><span class="s">source</span><span class="p">step on the path</span><span class="k">sink</span></div>
+    </section>
+  </div>
+
+  <footer>
+    A finding is a data flow, not a confirmed vulnerability. Check whether the source is really attacker controlled before acting on it.
+    <span id="version"></span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const SAMPLES = {
+  "Direct flow": `import os
+
+
+def ping():
+    host = input("host: ")
+    os.system("ping -c 1 " + host)
+`,
+  "Across three functions": `import os
+
+
+def read_name():
+    return input("name: ")
+
+
+def build(name):
+    return "id " + name.strip()
+
+
+def run(cmd):
+    os.system(cmd)
+
+
+def main():
+    run(build(read_name()))
+`,
+  "Instance attribute": `import subprocess
+
+
+class Backup:
+    def __init__(self, target):
+        self.target = target
+
+    def start(self):
+        subprocess.run(f"tar czf /tmp/b.tgz {self.target}", shell=True)
+
+
+def main():
+    job = Backup(input("directory: "))
+    job.start()
+`,
+  "SQL, unsafe and safe": `import sqlite3
+
+from flask import Flask, request
+
+app = Flask(__name__)
+
+
+@app.route("/user")
+def user():
+    name = request.args.get("name", "")
+    db = sqlite3.connect("app.db")
+    db.execute("SELECT * FROM users WHERE name = '" + name + "'")
+    db.execute("SELECT * FROM users WHERE name = ?", (name,))
+    return "ok"
+`,
+  "Two classes, same method name": `import os
+
+
+class Shell:
+    def run(self, x):
+        os.system(x)
+
+
+class Logger:
+    def run(self, x):
+        print(x)
+
+
+def known_type():
+    log = Logger()
+    log.run(input())          # resolves to Logger.run: no finding
+
+
+def unknown_type(worker):
+    worker.run(input())       # could be either: low confidence
+`,
+};
+
+const $ = (id) => document.getElementById(id);
+const state = { engine: "interproc", result: null, selected: 0, code: "" };
+
+for (const name of Object.keys(SAMPLES)) {
+  const opt = document.createElement("option");
+  opt.value = name; opt.textContent = name;
+  $("sample").appendChild(opt);
+}
+$("sample").addEventListener("change", (e) => {
+  if (SAMPLES[e.target.value]) { $("code").value = SAMPLES[e.target.value]; analyze(); }
+});
+
+document.querySelectorAll(".seg button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.engine = btn.dataset.engine;
+    document.querySelectorAll(".seg button").forEach((b) =>
+      b.setAttribute("aria-pressed", String(b === btn)));
+    if ($("code").value.trim()) analyze();
+  });
+});
+$("unknown").addEventListener("change", () => { if ($("code").value.trim()) analyze(); });
+$("run").addEventListener("click", analyze);
+$("code").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); analyze(); }
+  if (e.key === "Tab") {
+    // Insert spaces instead of moving focus; Python code needs indentation.
+    e.preventDefault();
+    const t = e.target, s = t.selectionStart;
+    t.value = t.value.slice(0, s) + "    " + t.value.slice(t.selectionEnd);
+    t.selectionStart = t.selectionEnd = s + 4;
+  }
+});
+
+async function analyze() {
+  const code = $("code").value;
+  state.code = code;
+  setStatus("Analyzing…");
+  let res, body;
+  try {
+    res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, engine: state.engine, unknown_calls: $("unknown").value }),
+    });
+    body = await res.json();
+  } catch (err) {
+    setStatus("Could not reach the server: " + err, true);
+    return;
+  }
+  if (!res.ok) {
+    const d = body.detail || {};
+    const msg = d.error === "syntax error"
+      ? `Syntax error on line ${d.line}: ${d.message}`
+      : "The server rejected the request: " + JSON.stringify(body.detail);
+    state.result = null;
+    renderFindings();
+    renderCode(d.line ? { sinkLine: d.line } : null);
+    setStatus(msg, true);
+    return;
+  }
+  state.result = body;
+  state.selected = 0;
+  renderFindings();
+  renderCode(currentPath());
+}
+
+function setStatus(text, isError) {
+  $("status").textContent = text;
+  $("status").className = isError ? "error" : "";
+}
+
+function renderFindings() {
+  const box = $("findings");
+  box.replaceChildren();
+  const r = state.result;
+  if (!r) return;
+  const engineName = r.engine === "interproc" ? "interprocedural" : "intraprocedural";
+  setStatus(r.count === 0
+    ? `No tainted path found (${engineName} engine).`
+    : `${r.count} finding${r.count === 1 ? "" : "s"} (${engineName} engine). Select one to see its path.`);
+  r.findings.forEach((f, i) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "finding";
+    btn.setAttribute("aria-selected", String(i === state.selected));
+    const top = el("div", "top");
+    top.append(el("span", "sev " + f.severity, f.severity), el("span", "cat", f.category),
+               el("span", "meta", `line ${f.line}, from line ${f.source_line}, confidence ${f.confidence}`));
+    btn.append(top, el("div", "meta", `${f.sink}(${f.tainted_input})`));
+    if (i === state.selected) {
+      const ol = el("ol", "steps");
+      for (const s of f.path) {
+        const li = document.createElement("li");
+        li.append(el("strong", "", `line ${s.line} ${s.kind}: `), el("code", "", s.detail));
+        ol.append(li);
+      }
+      if (f.note) ol.append(el("li", "meta", f.note));
+      btn.append(ol);
+    }
+    btn.addEventListener("click", () => { state.selected = i; renderFindings(); renderCode(currentPath()); });
+    box.append(btn);
+  });
+}
+
+function currentPath() {
+  const r = state.result;
+  if (!r || !r.findings.length) return null;
+  return r.findings[state.selected];
+}
+
+function renderCode(finding) {
+  const view = $("view");
+  view.replaceChildren();
+  const lines = state.code.split("\n");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  const roles = new Map(), notes = new Map();
+  const otherSinks = new Set((state.result ? state.result.findings : []).map((f) => f.line));
+  if (finding && finding.path) {
+    for (const s of finding.path) {
+      // Later steps on the same line keep the stronger role: sink > source > step.
+      const rank = { step: 1, source: 2, sink: 3 };
+      const role = s.kind === "source" ? "source" : s.kind === "sink" ? "sink" : "step";
+      if (!roles.has(s.line) || rank[role] > rank[roles.get(s.line)]) roles.set(s.line, role);
+      notes.set(s.line, (notes.has(s.line) ? notes.get(s.line) + "; " : "") + `${s.kind}: ${s.detail}`);
+    }
+  } else if (finding && finding.sinkLine) {
+    roles.set(finding.sinkLine, "sink");
+  }
+  lines.forEach((text, i) => {
+    const n = i + 1;
+    const row = el("div", "line");
+    if (roles.has(n)) row.classList.add(roles.get(n));
+    else if (otherSinks.has(n)) row.classList.add("othersink");
+    const code = el("span", "", text || " ");
+    if (notes.has(n)) code.append(el("span", "note", notes.get(n)));
+    row.append(el("span", "ln", String(n)), code);
+    view.append(row);
+  });
+  const first = view.querySelector(".source, .sink");
+  if (first) first.scrollIntoView({ block: "nearest" });
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+fetch("/api/version").then((r) => r.json()).then((v) => { $("version").textContent = "taintpy " + v.version; })
+  .catch(() => {});
+$("code").value = SAMPLES["Across three functions"];
+</script>
+</body>
+</html>
