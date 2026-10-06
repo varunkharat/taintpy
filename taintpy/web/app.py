@@ -2,15 +2,13 @@
 
 Install with ``pip install -e ".[web]"`` and run ``taintpy-web``. The page
 is static HTML served from ``static/``. All analysis happens in one JSON
-endpoint that calls the same code the CLI does, and returns the same
-finding dictionaries as the JSON report, so the page highlights lines from
+endpoint backed by taintpy/service.py. It returns the same finding
+dictionaries as the JSON report, so the page highlights lines from
 structured data and never parses display text.
 """
 
 import argparse
-import ast
 import os
-import warnings
 
 try:
     from fastapi import FastAPI, HTTPException
@@ -21,34 +19,15 @@ except ImportError as e:
                      '    pip install "taintpy[web]"  (or pip install -e ".[web]" in a clone)') from e
 
 from .. import __version__
-from ..analyzer import analyze_source
-from ..interprocedural import analyze_program
+from ..service import MAX_CODE_CHARS, RequestError, analyze
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-FILENAME = "<input>"
-# Large enough for any single file worth pasting, small enough that one
-# request cannot tie up the server for long.
-MAX_CODE_BYTES = 200_000
 
 
 class AnalyzeRequest(BaseModel):
-    code: str = Field(..., max_length=MAX_CODE_BYTES)
+    code: str = Field(..., max_length=MAX_CODE_CHARS)
     engine: str = Field("interproc", pattern="^(interproc|intra)$")
     unknown_calls: str = Field("sanitize", pattern="^(sanitize|propagate)$")
-
-
-def analyze(code, engine="interproc", unknown_calls="sanitize"):
-    """Run one analysis and return the response body. Raises SyntaxError."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", SyntaxWarning)
-        ast.parse(code, filename=FILENAME)
-        if engine == "interproc":
-            findings = analyze_program([(FILENAME, code)], unknown_calls).findings
-        else:
-            findings = analyze_source(code, FILENAME, unknown_calls)
-    findings.sort(key=lambda f: (f.lineno, f.source_line))
-    return {"engine": engine, "unknown_calls": unknown_calls,
-            "count": len(findings), "findings": [f.to_dict() for f in findings]}
 
 
 def create_app():
@@ -67,9 +46,8 @@ def create_app():
     def analyze_endpoint(req: AnalyzeRequest):
         try:
             return analyze(req.code, req.engine, req.unknown_calls)
-        except SyntaxError as e:
-            raise HTTPException(status_code=400, detail={
-                "error": "syntax error", "message": e.msg, "line": e.lineno})
+        except RequestError as e:
+            raise HTTPException(status_code=e.status, detail=e.detail)
 
     return app
 

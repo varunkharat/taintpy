@@ -150,8 +150,8 @@ footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
 "use strict";
 
 // build_site.py rewrites these two lines for the in-browser build in docs/.
-const BACKEND = "server";
-const PY_FILES = [];
+const BACKEND = "pyodide";
+const PY_FILES = ["taintpy/__init__.py", "taintpy/analyzer.py", "taintpy/interprocedural.py", "taintpy/program.py", "taintpy/rules.py", "taintpy/sarif.py", "taintpy/service.py"];
 const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/";
 
 const SAMPLES = {

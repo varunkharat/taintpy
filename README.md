@@ -1,5 +1,9 @@
 # taintpy
 
+[![tests](https://github.com/varunkharat/taintpy/actions/workflows/test.yml/badge.svg)](https://github.com/varunkharat/taintpy/actions/workflows/test.yml)
+
+**Try it in your browser, nothing to install:** <https://varunkharat.github.io/taintpy/>
+
 A taint-tracking static analyzer for Python. It looks for injection bugs:
 command injection, SQL injection, code injection, unsafe deserialization,
 path traversal, server-side request forgery, template injection and a few
@@ -108,8 +112,8 @@ suppress a finding you have reviewed.
 ### What a finding contains
 
 Each finding has the sink location, the category and severity, the tainted
-expression at the sink, the source location, the full path, and a
-confidence level. The JSON report also records the taintpy version, the
+expression at the sink, the source location, the full path, a confidence
+level, and a plain-language explanation of the risk with a suggested fix. The JSON report also records the taintpy version, the
 engine and options used, the rule files loaded, how many files were scanned,
 and every file that was skipped and why. Files that fail to parse, which in
 older projects usually means Python 2 code, are listed rather than silently
@@ -164,9 +168,22 @@ parameterized SQL call avoids being flagged.
 
 ## Web interface
 
-An optional web page lets you paste code, switch between the two engines,
-and see each finding's path highlighted on the code: the source in amber,
-every step in blue, the sink in red.
+A web page lets you paste code, switch between the two engines, and see each
+finding's path highlighted on the code: the source in amber, every step in
+blue, the sink in red. Each finding also says in plain language what an
+attacker could do and how to fix it.
+
+There are two ways to run the same page.
+
+**In the browser, with nothing installed.** The online version linked at the
+top runs the analyzer itself inside the browser using
+[Pyodide](https://pyodide.org), a build of Python for WebAssembly. The page
+loads the same `.py` files the command line uses, and pasted code never
+leaves your machine. The site is the `docs/` folder, built by
+`python tools/build_site.py` and served by GitHub Pages. A test fails if
+`docs/` falls out of date with the source.
+
+**On your own machine, with a small server:**
 
 ```bash
 pip install -e ".[web]"     # adds FastAPI and uvicorn; the analyzer itself still needs nothing
@@ -176,7 +193,8 @@ taintpy-web                 # serves http://127.0.0.1:8000
 The server listens on this machine only unless you pass `--host`. Pasted
 code is parsed, never run. The page calls one endpoint, `POST /api/analyze`,
 which returns the same finding objects as the JSON report, so the
-highlighting reads line numbers from the path data directly.
+highlighting reads line numbers from the path data directly. Both versions
+call the same function, `taintpy/service.py`.
 
 ## What it looks for
 
@@ -303,6 +321,22 @@ follows from the design.
   sink.
 - **Python 3 only.** Files that do not parse as the running Python version's
   syntax are skipped and listed in the report.
+
+## Built with
+
+taintpy is written in Python. The analyzer uses only the Python standard
+library, mainly the `ast` module, which parses Python source into a syntax
+tree. Everything else is optional:
+
+| Tool | Used for | Needed by |
+| --- | --- | --- |
+| [FastAPI](https://fastapi.tiangolo.com), [Uvicorn](https://www.uvicorn.org), [Pydantic](https://docs.pydantic.dev) | the local web server | `taintpy-web` only (`web` extra) |
+| [Pyodide](https://pyodide.org) | running the analyzer in the browser | the online version only, loaded from the jsDelivr CDN |
+| [pytest](https://pytest.org), [HTTPX](https://www.python-httpx.org) | running the tests | development only (`dev` extra) |
+| [Bandit](https://github.com/PyCQA/bandit), [Semgrep](https://semgrep.dev), [CodeQL](https://codeql.github.com) | tools taintpy is compared against | `bench/` only, installed separately |
+| [GitHub Actions](https://github.com/features/actions), [GitHub Pages](https://pages.github.com) | running tests on every push, hosting the online version | the repository |
+
+The web page is hand-written HTML, CSS and JavaScript with no framework.
 
 ## Responsible use
 
