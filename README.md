@@ -254,6 +254,11 @@ shows the tool does what it was built to do. It does not measure accuracy on
 code nobody wrote for it. No accuracy figures are claimed here until a
 measurement on an external benchmark can be rerun from this repository.
 
+`bench/` holds the harness for that measurement. It runs taintpy, Bandit,
+Semgrep, and any tool that writes SARIF (such as CodeQL) on labeled code, and
+scores each one by recall and false positive rate. See
+[bench/README.md](bench/README.md) for the label format and scoring rules.
+
 ## Known limitations
 
 Every item below is checked by a test in `tests/test_limitations.py` or
